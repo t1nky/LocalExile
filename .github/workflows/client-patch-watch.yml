@@ -14,6 +14,8 @@ name: client-patch-watch
 #            pull request. CI cannot run the game, so the pull request asks a person for the live checklist.
 
 on:
+  push:  # TEST ONLY (fork): run on this branch
+    branches: [ci-test/control-signatures]
   schedule:
     - cron: '7,37 * * * *'
   workflow_dispatch:
@@ -187,3 +189,33 @@ jobs:
           body-path: ${{ runner.temp }}/body.md
           draft: ${{ steps.resolve.outputs.unresolved == 'true' }}
           labels: ${{ steps.resolve.outputs.unresolved == 'true' && 'needs-live-check' || '' }}
+
+  measure:  # TEST ONLY (fork): network and tool measurements for the pull request description
+    needs: poll
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - name: CDN range support and download cost
+        env:
+          URL: ${{ needs.poll.outputs.exe_url }}
+        run: |
+          curl -sS -I "$URL" | grep -iE '^(HTTP|content-length|accept-ranges|etag|last-modified|server|x-cache|via)' || true
+          echo '--- Range 0-4095:'
+          curl -sS -r 0-4095 -o "$RUNNER_TEMP/head.bin" -D - "$URL" | grep -iE '^(HTTP|content-length|content-range)' || true
+          ls -l "$RUNNER_TEMP/head.bin"
+          for i in 1 2; do curl -fsS -o /dev/null -w "full download: %{size_download} bytes in %{time_total} s (%{speed_download} B/s)\n" "$URL"; done
+      - name: Tampered client must fail verification
+        env:
+          URL: ${{ needs.poll.outputs.exe_url }}
+        run: |
+          cd "$RUNNER_TEMP"
+          time (apt-get download -qq osslsigncode && dpkg-deb -x osslsigncode_*.deb root)
+          curl -fsS -o exe "$URL"
+          printf 'X' | dd of=exe bs=1 seek=$((0x400 + 0x1000)) conv=notrunc status=none
+          if root/usr/bin/osslsigncode verify -in exe -CAfile /etc/ssl/certs/ca-certificates.crt > out.txt 2>&1; then echo "UNEXPECTED: tampered file verified"; exit 1; fi
+          grep -E 'digest|verification|Failed' out.txt || true
+          echo "tampered file rejected (as expected)"
+          rm -f exe
+      - name: Tools present
+        run: python3 --version; node --version; gcc --version | head -1; openssl version; nproc; free -m | head -2
