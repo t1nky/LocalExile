@@ -2,7 +2,7 @@
   "format": 1,
   "doc": "Everything scripts/dev/client-control.js knows about the client, resolved at attach (Agents/docs/dev/client-control.md). Recompute values with scripts/ci/resolve_client.py; draft new entries with scripts/re/signature_pattern.py. VAs are image VAs at imageBase.",
   "client": {
-    "version": "3.29.3.3",
+    "version": "3.29.3.1",
     "build": "3.29.3b",
     "sha256": "78a0e227189c263658a7f65a02f086428b859bfc114ae8e7ce8aab721ebd48d5",
     "imageBase": "0x140000000"
@@ -306,8 +306,8 @@
       "doc": "State-stack push.",
       "va": "0x1415261c0",
       "start": "function",
-      "pattern": "48 89 5c 24 08 48 89 6c 24 10 48 89 74 24 18 57 48 83 ec ?? 48 8b 41 10 48 8b fa 48 8b d9 48 39 41 08 74 ?? 48 8b 48 f0 48 8b 01 ff 50 58 48 8b 53 10 33 ed 48 3b 53 18 74 ?? 48 89 2a 48 89 6a 08 48 8b 47 08 48 85 c0 74 ?? f0 ff 40 08 48 8b 07 48 89 02 48 8b 47 08 48 89 42 08 48 83 43 10 10 eb ??",
-      "bytes": "48895c240848896c24104889742418574883ec20488b4110488bfa488bd948394108740a488b48f0488b01ff5058488b531033ed483b5318742948892a48896a08488b47084885c07404f0ff4008488b07488902488b4708488942084883431010eb0c"
+      "pattern": "ff 89 5c 24 08 48 89 6c 24 10 48 89 74 24 18 57 48 83 ec ?? 48 8b 41 10 48 8b fa 48 8b d9 48 39 41 08 74 ?? 48 8b 48 f0 48 8b 01 ff 50 58 48 8b 53 10 33 ed 48 3b 53 18 74 ?? 48 89 2a 48 89 6a 08 48 8b 47 08 48 85 c0 74 ?? f0 ff 40 08 48 8b 07 48 89 02 48 8b 47 08 48 89 42 08 48 83 43 10 10 eb ??",
+      "bytes": "ff895c240848896c24104889742418574883ec20488b4110488bfa488bd948394108740a488b48f0488b01ff5058488b531033ed483b5318742948892a48896a08488b47084885c07404f0ff4008488b07488902488b4708488942084883431010eb0c"
     },
     "dispatch": {
       "doc": "Login-connection message dispatch; hooked to capture the login result (message 0x04).",
