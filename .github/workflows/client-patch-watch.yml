@@ -1,0 +1,189 @@
+name: client-patch-watch
+
+# When Grinding Gear Games ships a new client, re-resolve the native control bridge's client signatures
+# (scripts/dev/client-signatures.json) against the new PathOfExile.exe and open a pull request with the result.
+#
+# Opt-in and self-contained: the schedule does nothing unless the repository variable CLIENT_PATCH_WATCH is "true"
+# (a manual run always works), and the repository must allow GitHub Actions to create pull requests
+# (Settings > Actions > General). Two jobs keep it cheap:
+#   poll     every 30 minutes: no checkout and no setup actions; fetches two small files through the API, asks GGG's
+#            patch server for the current version (one TCP round trip) and compares. A few seconds.
+#   resolve  only for a new version without a client-patch/<version> branch yet: downloads PathOfExile.exe to the
+#            runner's temporary directory (never committed or uploaded; deleted afterwards), checks it is signed by
+#            Grinding Gear Games (fail closed), re-resolves the signatures, runs the checks and opens or updates the
+#            pull request. CI cannot run the game, so the pull request asks a person for the live checklist.
+
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Re-resolve and open/update the pull request even if the version is unchanged
+        type: boolean
+        default: false
+
+concurrency:
+  group: client-patch-watch
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    if: github.event_name != 'schedule' || vars.CLIENT_PATCH_WATCH == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.poll.outputs.run }}
+      version: ${{ steps.poll.outputs.version }}
+      pinned: ${{ steps.poll.outputs.pinned }}
+      exe_url: ${{ steps.poll.outputs.exe_url }}
+    steps:
+      - name: Compare the current client version with the signatures
+        id: poll
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force && 'true' || 'false' }}
+        run: |
+          api="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY"
+          get() { curl -fsS --max-time 20 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" "$api/contents/$1?ref=$GITHUB_SHA" -o "$RUNNER_TEMP/${1##*/}"; }
+          get scripts/ci/patch_version.py & get scripts/dev/client-signatures.json & wait
+          python3 -I "$RUNNER_TEMP/patch_version.py" --github-output "$GITHUB_OUTPUT" | tee "$RUNNER_TEMP/patch.txt"
+          version=$(sed -n 's/^version=//p' "$RUNNER_TEMP/patch.txt")
+          pinned=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["client"]["version"])' "$RUNNER_TEMP/client-signatures.json")
+          echo "pinned=$pinned" >> "$GITHUB_OUTPUT"
+          run=false
+          if [ "$FORCE" = true ]; then
+            run=true
+          elif [ "$version" != "$pinned" ]; then
+            # One pull request per version: once client-patch/<version> exists, later polls leave it alone.
+            status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 -H "Authorization: Bearer $GH_TOKEN" "$api/branches/client-patch/$version")
+            [ "$status" = 404 ] && run=true
+            [ "$status" = 404 ] || [ "$status" = 200 ] || { echo "branch check failed: HTTP $status"; exit 1; }
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "current $version, signatures for $pinned, re-resolve: $run"
+
+  resolve:
+    needs: poll
+    if: needs.poll.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      VERSION: ${{ needs.poll.outputs.version }}
+      PINNED: ${{ needs.poll.outputs.pinned }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download PathOfExile.exe (runner temp only)
+        env:
+          URL: ${{ needs.poll.outputs.exe_url }}
+        run: |
+          EXE="$RUNNER_TEMP/client/PathOfExile.exe"
+          mkdir -p "$RUNNER_TEMP/client"
+          curl -fsS --retry 3 --max-time 600 --max-filesize 400000000 -o "$EXE" \
+            -w 'downloaded %{size_download} bytes in %{time_total} s\n' "$URL"
+
+      - name: Verify the Authenticode signature (Grinding Gear Games, fail closed)
+        run: |
+          EXE="$RUNNER_TEMP/client/PathOfExile.exe"
+          # osslsigncode is not preinstalled. Unpack its package instead of installing it (no dpkg triggers);
+          # its libraries (OpenSSL, curl) are on the runner.
+          mkdir -p "$RUNNER_TEMP/tools" && cd "$RUNNER_TEMP/tools"
+          apt-get download -qq osslsigncode 2>/dev/null || { sudo apt-get update -qq && apt-get download -qq osslsigncode; }
+          dpkg-deb -x osslsigncode_*.deb root
+          set +e
+          root/usr/bin/osslsigncode verify -in "$EXE" -CAfile /etc/ssl/certs/ca-certificates.crt \
+            -TSA-CAfile /etc/ssl/certs/ca-certificates.crt > "$RUNNER_TEMP/signature.txt" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/signature.txt"
+          [ "$status" -eq 0 ]
+          grep -q '^Signature verification: ok' "$RUNNER_TEMP/signature.txt"
+          # The signer itself (not just any certificate in the bag) must be Grinding Gear Games.
+          awk '/^Signer.s certificate:/ { found = 1 } found && /Subject:/ { print; exit }' "$RUNNER_TEMP/signature.txt" \
+            | grep -Eq '(^|[ ,/])O=Grinding Gear Games Limited(,|/|$)'
+
+      - name: Re-resolve the signatures
+        id: resolve
+        run: |
+          EXE="$RUNNER_TEMP/client/PathOfExile.exe"
+          set +e
+          /usr/bin/time -f 'resolver: %e s, peak RSS %M KB' python3 -I scripts/ci/resolve_client.py "$EXE" \
+            --write --version "$VERSION" --report "$RUNNER_TEMP/report.md" > /dev/null
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/report.md"
+          case $status in
+            0|1) echo "unresolved=false" >> "$GITHUB_OUTPUT" ;;
+            2) echo "unresolved=true" >> "$GITHUB_OUTPUT" ;;
+            *) exit "$status" ;;
+          esac
+
+      - name: Checks
+        env:
+          # With everything resolved, also replay the simulated-patch tests on the new client.
+          LOCALEXILE_CLIENT_EXE: ${{ steps.resolve.outputs.unresolved == 'false' && format('{0}/client/PathOfExile.exe', runner.temp) || '' }}
+        run: |
+          python3 -I -m unittest discover -s scripts/ci -p 'test_*.py'
+          node --check scripts/dev/client-resolver.js
+          node --check scripts/dev/client-control.js
+
+      - name: Remove the client
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/client"
+
+      - name: Pull request text
+        env:
+          UNRESOLVED: ${{ steps.resolve.outputs.unresolved }}
+        run: |
+          {
+            echo "## Summary"
+            echo
+            echo "Grinding Gear Games released client $VERSION (the signatures were for $PINNED). This pull request"
+            echo "re-resolves the native control bridge's client addresses and offsets"
+            echo "(\`scripts/dev/client-signatures.json\`) against the new, Grinding Gear Games-signed PathOfExile.exe."
+            echo
+            if [ "$UNRESOLVED" = true ]; then
+              echo "**Some symbols could not be resolved** (draft, label \`needs-live-check\`): the operations that need"
+              echo "them fail with \"Unsupported client: ... (not found)\" until their signatures are updated"
+              echo "(Agents/docs/dev/client-control.md, \"Adding or fixing a symbol\")."
+            else
+              echo "Every symbol was found by its signature or a cross-reference."
+            fi
+            echo
+            echo "**CI cannot run the game.** Before merging, someone with the new client must check it live:"
+            echo
+            echo "1. \`scripts/dev/client_control.py bridge:doctor\`, and again with \`--force-scan\`: every symbol"
+            echo "   resolved, every operation \`ok\`, the sanity checks in range."
+            echo "2. The client_control flow: game:open, login, character:list, character:play, game:status,"
+            echo "   game:resources, command \`/pos\`, chat, tp, flask:use 1, character:select, logout."
+            echo
+            echo "A new client can also need server or protocol changes; this pull request only covers the bridge."
+            echo
+            echo "## Resolver report"
+            echo
+            cat "$RUNNER_TEMP/report.md"
+          } > "$RUNNER_TEMP/body.md"
+
+      - name: Open or update the pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: client-patch/${{ env.VERSION }}
+          base: ${{ github.ref_name }}
+          add-paths: scripts/dev/client-signatures.json
+          commit-message: |
+            Re-resolve client signatures for ${{ env.VERSION }}
+
+            Generated by .github/workflows/client-patch-watch.yml (scripts/ci/resolve_client.py).
+          title: "Client ${{ env.VERSION }}: re-resolved control bridge signatures"
+          body-path: ${{ runner.temp }}/body.md
+          draft: ${{ steps.resolve.outputs.unresolved == 'true' }}
+          labels: ${{ steps.resolve.outputs.unresolved == 'true' && 'needs-live-check' || '' }}
