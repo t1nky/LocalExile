@@ -2,7 +2,7 @@
   "format": 1,
   "doc": "Everything scripts/dev/client-control.js knows about the client, resolved at attach (Agents/docs/dev/client-control.md). Recompute values with scripts/ci/resolve_client.py; draft new entries with scripts/re/signature_pattern.py. VAs are image VAs at imageBase.",
   "client": {
-    "version": "3.29.3.2",
+    "version": "3.29.3.3",
     "build": "3.29.3b",
     "sha256": "78a0e227189c263658a7f65a02f086428b859bfc114ae8e7ce8aab721ebd48d5",
     "imageBase": "0x140000000"
