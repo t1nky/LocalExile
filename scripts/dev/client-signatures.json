@@ -676,6 +676,73 @@
         "loginForm.account": "0x10",
         "loginForm.digest": "0x34"
       }
+    },
+    "78a0e227189c263658a7f65a02f086428b859bfc114ae8e7ce8aab721ebd48d5": {
+      "version": "3.29.3.3",
+      "label": "3.29.3b",
+      "imageBase": "0x140000000",
+      "symbols": {
+        "frame": "0x141526cbf",
+        "stackGetter": "0x1400f2600",
+        "appGetter": "0x1400f35b0",
+        "activeSend": "0x1400f50f0",
+        "activeSendLogin": "0x1400f51df",
+        "connect": "0x14213d9f0",
+        "login": "0x14213ea10",
+        "loginSend": "0x14213eadc",
+        "play": "0x1421406f0",
+        "playSend": "0x1421407c2",
+        "write": "0x140dfb760",
+        "flush": "0x140dfb8c0",
+        "logout": "0x140d0f740",
+        "push": "0x1415261c0",
+        "dispatch": "0x14213f190",
+        "characterList": "0x14213f58c",
+        "loginWriter": "0x14213c660",
+        "assignText": "0x1401346d0",
+        "lifeTick": "0x141e6a190",
+        "lifeTickOwner": "0x141e6a257",
+        "poolUpdate": "0x141e69fb0",
+        "instanceSocketCheck": "0x142149d2a"
+      },
+      "globals": {
+        "app": "0x1445cbe68",
+        "stack": "0x1445cbe40"
+      },
+      "offsets": {
+        "app.instance": "0x348",
+        "app.login": "0x358",
+        "instance.state": "0xc3a0",
+        "instance.socket": "0xc288",
+        "login.socket": "0xdd0",
+        "login.state": "0xde8",
+        "login.character": "0xdf0",
+        "login.account": "0xe10",
+        "login.characters": "0xe68",
+        "character.stride": "0x50",
+        "character.league": "0x20",
+        "character.level": "0x48",
+        "character.classId": "0x4a",
+        "stack.statesBegin": "0x20",
+        "stack.statesEnd": "0x28",
+        "stack.stateTable": "0x48",
+        "stack.stateCount": "0xc",
+        "state.id": "0x209",
+        "ingame.classId": "0xa48",
+        "life.life": "0x178",
+        "life.mana": "0x1c8",
+        "life.es": "0x210",
+        "component.owner": "0x8",
+        "owner.flags": "0x88",
+        "pool.fraction": "0x28",
+        "pool.current": "0x30",
+        "update.current": "0x20",
+        "update.pool": "0x28",
+        "message.id": "0x8",
+        "message.loginResult": "0x10",
+        "loginForm.account": "0x10",
+        "loginForm.digest": "0x34"
+      }
     }
   }
 }
