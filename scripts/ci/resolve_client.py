@@ -518,7 +518,7 @@ def main():
               f"OK: {len(result['symbols'])} symbols ({mode}), {len(result['globals'])} globals and "
               f"{len(result['offsets'])} offsets reproduce the pinned values in {options.exe.name}")
         return 1 if problems else 0
-    sha256 = hashlib.sha256(image.data).hexdigest()
+    sha256 = sha256_file(options.exe)  # streamed: hashing the mmap would keep all 79 MB resident
     new = updated(signatures, image, result, sha256, options.version)
     text = report(signatures, new, result, options.exe)
     if options.report:
